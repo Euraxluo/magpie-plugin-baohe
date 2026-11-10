@@ -1,6 +1,6 @@
 {
   "name": "magpie-plugin-baohe",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "宝盒(中通 zbox-lite)内网认证哨兵面板：状态总览、一键重连、补丁与守护管理。Baohe network sentry panel for magpie: status, one-click reauth, client patch and daemon control.",
   "author": "Euraxluo (https://github.com/Euraxluo)",
   "type": "module",
