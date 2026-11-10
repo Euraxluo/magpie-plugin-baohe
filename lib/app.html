@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>宝盒网络哨兵</title>
+<script>window.__BAOHE_TOKEN__="@@BAOHE_TOKEN@@";</script>
+<style>
+  :root { color-scheme: light dark; }
+  html, body { margin:0; background: var(--magpie-bg, Canvas); color: var(--magpie-fg, CanvasText);
+    font: 13px/1.5 var(--magpie-font, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+    -webkit-font-smoothing: antialiased; }
+  body { padding: 18px 22px 26px; max-width: 1060px; margin: 0 auto; }
+  header { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  h1 { font-size:17px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  .chip { font-size:11px; color:var(--magpie-muted, GrayText); border:1px solid var(--magpie-line, ButtonBorder);
+    border-radius:999px; padding:1px 9px; }
+  .spacer { flex:1; }
+  button { font:inherit; color:inherit; background:var(--magpie-card, ButtonFace); border:1px solid var(--magpie-line, ButtonBorder);
+    border-radius:6px; padding:4px 12px; cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--magpie-muted, ButtonBorder); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--magpie-accent-soft, Highlight); border-color:transparent; color:var(--magpie-accent, HighlightText); font-weight:500; }
+  button.armed { background:#e5484d; border-color:transparent; color:#fff; }
+  .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+  @media (max-width: 860px) { .grid { grid-template-columns:repeat(2, 1fr); } }
+  .card { background:var(--magpie-card, Canvas); border:1px solid var(--magpie-line, ButtonBorder); border-radius:10px; padding:11px 13px; }
+  .card .t { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--magpie-muted, GrayText); margin-bottom:6px; }
+  .dot { width:8px; height:8px; border-radius:99px; background:GrayText; flex:none; }
+  .dot.ok { background:var(--magpie-success, #2f9e6e); }
+  .dot.warn { background:var(--magpie-warning, #d9a53a); }
+  .dot.bad { background:var(--magpie-error, #e5484d); }
+  .card .v { font-size:13px; font-weight:500; word-break:break-all; }
+  .card .s { font-size:11px; color:var(--magpie-muted, GrayText); margin-top:3px; word-break:break-all; }
+  .actions { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; align-items:center; }
+  .actions .note { font-size:11px; color:var(--magpie-muted, GrayText); }
+  h2 { font-size:13px; font-weight:600; margin:16px 0 8px; }
+  pre.log { background:var(--magpie-card, Canvas); border:1px solid var(--magpie-line, ButtonBorder); border-radius:8px;
+    padding:9px 11px; overflow:auto; max-height:220px; font:11px/1.5 var(--magpie-code, ui-monospace, Menlo, monospace);
+    white-space:pre-wrap; word-break:break-all; color:var(--magpie-muted, GrayText); }
+  #toast { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:var(--magpie-card, ButtonFace);
+    border:1px solid var(--magpie-line, ButtonBorder); border-radius:8px; padding:7px 14px; font-size:12px;
+    box-shadow:0 4px 16px rgba(0,0,0,.18); display:none; max-width:80vw; word-break:break-all; z-index:9; }
+  .spin { display:inline-block; width:11px; height:11px; border:2px solid var(--magpie-line, ButtonBorder);
+    border-top-color:var(--magpie-accent, Highlight); border-radius:99px; animation:sp .7s linear infinite; vertical-align:-1px; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡️ 宝盒网络哨兵</h1>
+  <span class="chip" id="ver">…</span>
+  <span class="spacer"></span>
+  <label style="font-size:12px;color:var(--magpie-muted,GrayText);display:flex;align-items:center;gap:5px">
+    <input type="checkbox" id="auto" checked style="accent-color:var(--magpie-accent,Highlight)"> 自动刷新
+  </label>
+  <button id="refresh">刷新</button>
+</header>
+
+<div class="grid" id="cards"></div>
+
+<div class="actions">
+  <button class="primary" id="a-reauth">⚡ 立即重连</button>
+  <button id="a-patch">🩹 重打客户端补丁</button>
+  <button id="a-daemon">♻️ 重启守护</button>
+  <button id="a-app">🔄 重启宝盒</button>
+  <span class="note" id="anote"></span>
+</div>
+
+<h2>守护运行日志（最近 40 行 ×2）</h2>
+<pre class="log" id="log">加载中…</pre>
+<div id="toast"></div>
+
+<script>
+(function () {
+  const TOKEN = window.__BAOHE_TOKEN__;
+  // 主题：boot.js 经 query 带来的 magpie 设计令牌
+  try {
+    const q = new URLSearchParams(location.search);
+    const t = q.get("tokens");
+    if (t) {
+      const slim = JSON.parse(decodeURIComponent(escape(atob(t))));
+      for (const [k, v] of Object.entries(slim || {}))
+        document.documentElement.style.setProperty("--magpie-" + k, v);
+    }
+    if (q.get("theme")) document.documentElement.style.colorScheme = q.get("theme");
+  } catch { /* 主题带不过来就用系统色 */ }
+
+  const $ = (id) => document.getElementById(id);
+  function toast(msg, ms = 3800) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.style.display = "block";
+    clearTimeout(el._t);
+    el._t = setTimeout(() => (el.style.display = "none"), ms);
+  }
+
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: { "content-type": "application/json", "x-baohe-token": TOKEN },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const j = await res.json().catch(() => ({ error: "HTTP " + res.status }));
+    if (!res.ok) throw new Error(j.error || "HTTP " + res.status);
+    return j;
+  }
+
+  function card(title, state, value, sub) {
+    const cls = state === true ? "ok" : state === false ? "bad" : "warn";
+    return `<div class="card"><div class="t"><span class="dot ${cls}"></span>${title}</div>
+      <div class="v">${value}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
+  }
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function render(d) {
+    const cards = [];
+    const app = d.app || {}, portal = d.portal || {}, net = d.internet || {}, patch = d.patch || {}, dm = d.daemon || {};
+    cards.push(card("宝盒进程", app.running === true, esc(app.running ? `运行中 · ${app.pid || "?"}` : "未运行"),
+      esc([app.version && "v" + app.version, app.started && "启动于 " + app.started].filter(Boolean).join(" · "))));
+    cards.push(card("内网认证 (10.10.9.2)", portal.authed === true, esc(portal.detail || "?"), "断网时点「立即重连」走无头协议"));
+    cards.push(card("公网连通", net.ok === true, esc(net.detail || "?"), "223.5.5.5 DoH 全链路"));
+    cards.push(card("客户端补丁 (main.js)", patch.patched === true, patch.patched ? "已注入" : "未注入", esc(patch.detail || "")));
+    cards.push(card("守护 watch", dm.watching === true, esc(dm.detail || "?"), dm.cli === false ? "⚠️ 未找到 ~/.local/bin/baohe-auth" : ""));
+    $("ver").textContent = "v" + (app.version || "?") + " · " + new Date(d.at).toLocaleTimeString("zh-CN", { hour12: false });
+    $("cards").innerHTML = cards.join("");
+    const L = d.log || {};
+    $("log").textContent =
+      "──── baohe-auth.log ────\n" + (L.out || "(空)") +
+      "\n\n──── baohe-auth.err.log ────\n" + (L.err || "(空)");
+  }
+
+  let busy = false;
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    try { render(await api("GET", "/api/status")); }
+    catch (e) { toast("刷新失败: " + e.message); }
+    finally { busy = false; }
+  }
+
+  async function act(btn, label, fn) {
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> ' + esc(label) + "…";
+    $("anote").textContent = "";
+    try {
+      const r = await fn();
+      return r;
+    } catch (e) {
+      toast(label + " 失败: " + e.message, 6000);
+      return null;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  }
+
+  $("refresh").onclick = () => refresh();
+  $("a-reauth").onclick = () => act($("a-reauth"), "重连", async () => {
+    const r = await api("POST", "/api/reauth");
+    toast(r.after?.authed ? `✅ 重连成功（${r.before?.authed ? "本来就在线" : "从断网恢复"}）` : `⚠️ 协议已触发，但门户仍显示: ${r.after?.detail || "?"}`, 6000);
+    refresh();
+  });
+  $("a-patch").onclick = () => act($("a-patch"), "打补丁", async () => {
+    const r = await api("POST", "/api/patch");
+    toast(r.ok ? "✅ 补丁已重新注入（重启宝盒后生效）" : "❌ 打补丁失败: " + (r.err || r.out || "?"), 7000);
+    refresh();
+  });
+  $("a-daemon").onclick = () => act($("a-daemon"), "重启守护", async () => {
+    const r = await api("POST", "/api/daemon");
+    toast(r.ok ? `✅ 守护已重启（${r.daemon?.detail || ""}）` : "❌ 重启失败", 6000);
+    refresh();
+  });
+  // 沙箱框架里 confirm() 被禁，两段式确认
+  let arm = null;
+  $("a-app").onclick = () => {
+    if (arm) {
+      clearTimeout(arm); arm = null;
+      $("a-app").textContent = "🔄 重启宝盒"; $("a-app").classList.remove("armed");
+      act($("a-app"), "重启", async () => {
+        const r = await api("POST", "/api/app-restart", { confirm: true });
+        toast(r.ok ? `✅ 宝盒已重启（${r.app?.detail || ""}）` : "❌ 重启失败", 6000);
+        refresh();
+      });
+      return;
+    }
+    $("a-app").textContent = "确认重启宝盒？";
+    $("a-app").classList.add("armed");
+    arm = setTimeout(() => { arm = null; $("a-app").textContent = "🔄 重启宝盒"; $("a-app").classList.remove("armed"); }, 3500);
+  };
+
+  setInterval(() => { if (document.visibilityState === "visible" && $("auto").checked) refresh(); }, 5000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
+  refresh();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+{
+  "name": "magpie-plugin-baohe",
+  "version": "0.1.0",
+  "description": "宝盒(中通 zbox-lite)内网认证哨兵面板：状态总览、一键重连、补丁与守护管理。Baohe network sentry panel for magpie: status, one-click reauth, client patch and daemon control.",
+  "author": "Euraxluo (https://github.com/Euraxluo)",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "serve.mjs",
+    "lib",
+    "page",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "magpie",
+    "magpie-plugin",
+    "magpie-page",
+    "opencode",
+    "opencode-plugin",
+    "baohe",
+    "zbox",
+    "zto"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Euraxluo/magpie-plugin-baohe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Euraxluo/magpie-plugin-baohe/issues"
+  },
+  "homepage": "https://github.com/Euraxluo/magpie-plugin-baohe#readme",
+  "engines": {
+    "magpie": ">=0.1.1340"
+  },
+  "scripts": {
+    "start": "node serve.mjs"
+  },
+  "magpie": {
+    "icon": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='14' fill='%232f9e6e'/%3E%3Cpath d='M32 14l14 6v10c0 9-6 16-14 20-8-4-14-11-14-20V20z' fill='%23fff'/%3E%3Cpath d='M26 32l4 4 8-9' stroke='%232f9e6e' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+    "page": {
+      "title": "Baohe network",
+      "titles": {
+        "zh": "宝盒网络",
+        "zh-TW": "寶盒網絡"
+      },
+      "file": "page/index.html",
+      "icon": "page/icon.svg",
+      "service": {
+        "port": 3491,
+        "option": "port"
+      }
+    },
+    "options": {
+      "port": 3491
+    }
+  }
+}
