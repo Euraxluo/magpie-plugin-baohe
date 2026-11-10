@@ -62,12 +62,14 @@
 <div class="actions">
   <button class="primary" id="a-reauth">⚡ 立即重连</button>
   <button id="a-patch">🩹 重打客户端补丁</button>
-  <button id="a-daemon">♻️ 重启守护</button>
+  <button id="a-daemon" data-on="1">⏸ 停止守望</button>
   <button id="a-app">🔄 重启宝盒</button>
+  <button id="a-legacy">🗑 卸载旧守护</button>
   <span class="note" id="anote"></span>
 </div>
 
-<h2>守护运行日志（最近 40 行 ×2）</h2>
+<h2>守望与自愈记录</h2>
+
 <pre class="log" id="log">加载中…</pre>
 <div id="toast"></div>
 
@@ -116,20 +118,32 @@
 
   function render(d) {
     const cards = [];
-    const app = d.app || {}, portal = d.portal || {}, net = d.internet || {}, patch = d.patch || {}, dm = d.daemon || {};
+    const app = d.app || {}, portal = d.portal || {}, net = d.internet || {}, patch = d.patch || {}, w = d.watcher || {}, legacy = d.daemon || {};
     cards.push(card("宝盒进程", app.running === true, esc(app.running ? `运行中 · ${app.pid || "?"}` : "未运行"),
       esc([app.version && "v" + app.version, app.started && "启动于 " + app.started].filter(Boolean).join(" · "))));
-    cards.push(card("内网认证 (10.10.9.2)", portal.authed === true, esc(portal.detail || "?"), "断网时点「立即重连」走无头协议"));
+    cards.push(card("内网认证 (10.10.9.2)", portal.authed === true, esc(portal.detail || "?"), "断网自动无头重连"));
     cards.push(card("公网连通", net.ok === true, esc(net.detail || "?"), "223.5.5.5 DoH 全链路"));
     cards.push(card("客户端补丁 (main.js)", patch.patched === true, patch.patched ? "已注入" : "未注入", esc(patch.detail || "")));
-    cards.push(card("守护 watch", dm.watching === true, esc(dm.detail || "?"), dm.cli === false ? "⚠️ 未找到 ~/.local/bin/baohe-auth" : ""));
+    const wOk = w.running === true;
+    const wSub = wOk
+      ? `自 ${new Date(w.startedAt).toLocaleString("zh-CN", { hour12: false })} · 事件 ${w.events} · 自愈 ${w.healed}`
+      : "已停止 —— 点「启动守望」恢复";
+    cards.push(card("插件守望 (取代 launchd)", wOk, wOk ? `运行中 · ${(w.intervalMs / 1000).toFixed(1)}s 轮询` : "停止", esc(wSub)));
+    if (legacy.legacyPid || /仍在跑/.test(legacy.launchd || "")) {
+      cards.push(card("旧 launchd 守护", false, "仍在运行", esc(legacy.detail || "") + " · 点「卸载旧守护」移交"));
+    } else if (!/未安装/.test(legacy.launchd || "")) {
+      cards.push(card("旧 launchd 守护", null, "残留未卸载", esc(legacy.launchd || "")));
+    }
     $("ver").textContent = "v" + (app.version || "?") + " · " + new Date(d.at).toLocaleTimeString("zh-CN", { hour12: false });
     $("cards").innerHTML = cards.join("");
     const L = d.log || {};
     $("log").textContent =
-      "──── baohe-auth.log ────\n" + (L.out || "(空)") +
-      "\n\n──── baohe-auth.err.log ────\n" + (L.err || "(空)");
-  }
+      "──── 最近断网/自愈（插件守望内存）────\n" +
+      (w.lastEvent ? `[事件] ${new Date(w.lastEvent.at).toLocaleString("zh-CN", { hour12: false })} ${w.lastEvent.reason}\n[结果] ${JSON.stringify(w.lastResult || {})}` : "(尚无)") +
+      (w.lastPatchEvent ? `\n[补丁] ${new Date(w.lastPatchEvent.at).toLocaleString("zh-CN", { hour12: false })} ${w.lastPatchEvent.ok ? "已自动重打" : "重打失败"}: ${w.lastPatchEvent.out}` : "") +
+      "\n\n──── 旧守护日志（历史）baohe-auth.log ────\n" + (L.out || "(空)");
+    syncWatcherBtn(w.running === true);
+   }
 
   let busy = false;
   async function refresh() {
@@ -168,9 +182,26 @@
     toast(r.ok ? "✅ 补丁已重新注入（重启宝盒后生效）" : "❌ 打补丁失败: " + (r.err || r.out || "?"), 7000);
     refresh();
   });
-  $("a-daemon").onclick = () => act($("a-daemon"), "重启守护", async () => {
-    const r = await api("POST", "/api/daemon");
-    toast(r.ok ? `✅ 守护已重启（${r.daemon?.detail || ""}）` : "❌ 重启失败", 6000);
+  $("a-daemon").onclick = () => {
+    const running = $("a-daemon").dataset.on === "1";
+    act($("a-daemon"), running ? "停止守望" : "启动守望", async () => {
+      const r = await api("POST", "/api/watcher", { action: running ? "stop" : "start" });
+      const w = r.watcher || {};
+      toast(w.running ? "✅ 插件守望运行中" : "⏸ 插件守望已停止", 5000);
+      syncWatcherBtn(w.running);
+      refresh();
+    });
+  };
+  function syncWatcherBtn(on) {
+    const b = $("a-daemon");
+    if (!b) return;
+    b.dataset.on = on ? "1" : "0";
+    b.textContent = on ? "⏸ 停止守望" : "▶️ 启动守望";
+    b.classList.toggle("primary", !on);
+  }
+  $("a-legacy").onclick = () => act($("a-legacy"), "卸载旧守护", async () => {
+    const r = await api("POST", "/api/legacy-uninstall");
+    toast(r.ok ? "✅ 旧 launchd 守护已卸载，守望完全由插件承担" : "⚠️ 旧守护仍在运行，重试或手动处理", 7000);
     refresh();
   });
   // 沙箱框架里 confirm() 被禁，两段式确认
